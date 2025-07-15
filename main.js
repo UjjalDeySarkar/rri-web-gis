@@ -8,28 +8,6 @@ const map = new mapboxgl.Map({
   zoom: 1
 });
 
-// Create a shared popup
-const popup = new mapboxgl.Popup({
-  closeButton: false,
-  closeOnClick: false
-});
-
-// Utility to adjust popup to avoid overlapping sidebar
-function adjustPopupPosition(lngLat) {
-  const sidebarWidth = container.classList.contains('collapsed') ? 0 : 320;
-  const mapCanvas = map.getCanvas();
-  const mapRect = mapCanvas.getBoundingClientRect();
-
-  const sidebarLeft = mapRect.right - sidebarWidth;
-  const pixel = map.project(lngLat);
-
-  // If popup would be under the sidebar, offset it to the left
-  if (pixel.x > sidebarLeft - 50) {
-    return map.unproject([sidebarLeft - 50, pixel.y]);
-  }
-  return lngLat;
-}
-
 map.on('style.load', () => {
   map.setFog({
     color: 'white',
@@ -51,7 +29,60 @@ map.on('style.load', () => {
   const toProj = 'EPSG:4326';
   proj4.defs(fromProj, '+proj=utm +zone=45 +datum=WGS84 +units=m +no_defs');
 
-  // === Centre Line ===
+  let originalCrossSectionFeatures = [];
+  const visibleCrossSection = {
+    type: 'FeatureCollection',
+    features: []
+  };
+
+  // === Cross Section Setup (Initial: Hidden) ===
+  fetch('/data/Cross_Section.geojson')
+    .then(res => res.json())
+    .then(utmData => {
+      const reprojectedFeatures = utmData.features.map(feature => {
+        const newCoords = feature.geometry.coordinates.map(line =>
+          line.map(([x, y]) => proj4(fromProj, toProj, [x, y]))
+        );
+        return {
+          ...feature,
+          geometry: { ...feature.geometry, coordinates: newCoords }
+        };
+      });
+
+      // console.log("Cross Section features loaded:", reprojectedFeatures);
+      originalCrossSectionFeatures = reprojectedFeatures;
+      const geojson = { ...utmData, crs: undefined, features: reprojectedFeatures };
+
+      map.addSource('cross-section', { type: 'geojson', data: visibleCrossSection });
+
+      map.addLayer({
+        id: 'cross-section-layer',
+        type: 'line',
+        source: 'cross-section',
+        paint: {
+          'line-color': '#0074D9',
+          'line-width': 4,
+          'line-dasharray': [2, 2]
+        }
+      });
+
+      // Click handler
+      map.on('click', 'cross-section-layer', (e) => {
+        const props = e.features[0].properties;
+        const infoHtml = `
+          <table class="table table-sm table-striped table-bordered">
+            <tr><th>Chainage</th><td>${props.Chainage}</td></tr>
+            <tr><th>Survey Date</th><td>${props.Survey_Dt}</td></tr>
+          </table>
+        `;
+        document.getElementById('feature-data').innerHTML = infoHtml;
+      });
+
+      map.on('mouseenter', 'cross-section-layer', () => map.getCanvas().style.cursor = 'pointer');
+      map.on('mouseleave', 'cross-section-layer', () => map.getCanvas().style.cursor = '');
+    });
+
+  // === Centre Line Animation and Reveal Cross Sections ===
   fetch('/data/Centre_Line.geojson')
     .then(res => res.json())
     .then(utmData => {
@@ -83,41 +114,52 @@ map.on('style.load', () => {
       };
 
       map.addSource('centre-line', { type: 'geojson', data: animatedLine });
+
       map.addLayer({
         id: 'centre-line-layer',
         type: 'line',
         source: 'centre-line',
-        paint: { 'line-color': '#FF5733', 'line-width': 8 }
-      });
-
-      // === Hover popup for Centre Line ===
-      map.on('mousemove', 'centre-line-layer', (e) => {
-        const coordinates = adjustPopupPosition(e.lngLat);
-        const { EMB_Name } = geojson.features[0].properties;
-
-        popup
-          .setLngLat(coordinates)
-          .setHTML(`<div class="popup-centre">
-      <div><span class="popup-icon">🏞</span><strong>EMB Name:</strong> ${EMB_Name}</div>
-    </div>`)
-          .addTo(map);
-      });
-
-      map.on('mouseleave', 'centre-line-layer', () => {
-        popup.remove();
+        paint: { 'line-color': '#FF5733', 'line-width': 4 }
       });
 
       let index = 0;
+      const bufferDistance = 0.001;
+
       const interval = setInterval(() => {
         if (index >= allCoords.length) {
           clearInterval(interval);
           return;
         }
-        animatedLine.features[0].geometry.coordinates.push(allCoords[index]);
+
+        const currentCoord = allCoords[index];
+        // console.log("Current Centre Coord:", currentCoord);
+        animatedLine.features[0].geometry.coordinates.push(currentCoord);
         map.getSource('centre-line').setData(animatedLine);
+
+        // Reveal Cross Sections dynamically
+        originalCrossSectionFeatures.forEach((feature) => {
+          const alreadyVisible = visibleCrossSection.features.some(
+            f => f.properties.Chainage === feature.properties.Chainage
+          );
+          if (alreadyVisible) return;
+
+          const lineCoords = feature.geometry.coordinates[0];
+          for (const [x, y] of lineCoords) {
+            const dx = x - currentCoord[0];
+            const dy = y - currentCoord[1];
+            if (Math.sqrt(dx * dx + dy * dy) < bufferDistance) {
+              visibleCrossSection.features.push(feature);
+              // console.log(`Revealing Chainage ${feature.properties.Chainage}`);
+              map.getSource('cross-section').setData(visibleCrossSection);
+              break;
+            }
+          }
+        });
+
         index++;
       }, 30);
 
+      // Click on Centre Line
       map.on('click', 'centre-line-layer', (e) => {
         const props = geojson.features[0].properties;
         const infoHtml = `
@@ -137,68 +179,9 @@ map.on('style.load', () => {
       map.on('mouseenter', 'centre-line-layer', () => map.getCanvas().style.cursor = 'pointer');
       map.on('mouseleave', 'centre-line-layer', () => map.getCanvas().style.cursor = '');
     });
-
-  // === Cross Section ===
-  fetch('/data/Cross_Section.geojson')
-    .then(res => res.json())
-    .then(utmData => {
-      const reprojectedFeatures = utmData.features.map(feature => {
-        const newCoords = feature.geometry.coordinates.map(line =>
-          line.map(([x, y]) => proj4(fromProj, toProj, [x, y]))
-        );
-        return {
-          ...feature,
-          geometry: { ...feature.geometry, coordinates: newCoords }
-        };
-      });
-
-      const geojson = { ...utmData, crs: undefined, features: reprojectedFeatures };
-      map.addSource('cross-section', { type: 'geojson', data: geojson });
-
-      map.addLayer({
-        id: 'cross-section-layer',
-        type: 'line',
-        source: 'cross-section',
-        paint: {
-          'line-color': '#0074D9',
-          'line-width': 4,
-          'line-dasharray': [2, 1]
-        }
-      });
-
-      // === Hover popup for Cross Section ===
-      map.on('mousemove', 'cross-section-layer', (e) => {
-        const coordinates = adjustPopupPosition(e.lngLat);
-        const { Chainage } = e.features[0].properties;
-
-        popup
-          .setLngLat(coordinates)
-          .setHTML(`<div class="popup-cross">
-      <div><span class="popup-icon">📍</span><strong>Chainage:</strong> ${Chainage}</div>
-    </div>`)
-          .addTo(map);
-      });
-
-      map.on('mouseleave', 'cross-section-layer', () => {
-        popup.remove();
-      });
-
-      map.on('click', 'cross-section-layer', (e) => {
-        const props = e.features[0].properties;
-        const infoHtml = `
-          <table class="table table-sm table-striped table-bordered">
-            <tr><th>Chainage</th><td>${props.Chainage}</td></tr>
-            <tr><th>Survey Date</th><td>${props.Survey_Dt}</td></tr>
-          </table>
-        `;
-        document.getElementById('feature-data').innerHTML = infoHtml;
-      });
-
-      map.on('mouseenter', 'cross-section-layer', () => map.getCanvas().style.cursor = 'pointer');
-      map.on('mouseleave', 'cross-section-layer', () => map.getCanvas().style.cursor = '');
-    });
 });
 
+// === Sidebar Toggle ===
 const toggleBtn = document.getElementById('toggle-btn');
 const container = document.getElementById('container');
 
@@ -207,3 +190,42 @@ toggleBtn.addEventListener('click', () => {
   toggleBtn.textContent = container.classList.contains('collapsed') ? '⇦' : '⇨';
   setTimeout(() => map.resize(), 310);
 });
+
+// === Popup on Hover ===
+const popup = new mapboxgl.Popup({
+  closeButton: false,
+  closeOnClick: false
+});
+
+function adjustPopupPosition(lngLat) {
+  const sidebarWidth = container.classList.contains('collapsed') ? 0 : 320;
+  const mapCanvas = map.getCanvas();
+  const mapRect = mapCanvas.getBoundingClientRect();
+  const sidebarLeft = mapRect.right - sidebarWidth;
+  const pixel = map.project(lngLat);
+
+  if (pixel.x > sidebarLeft - 50) {
+    return map.unproject([sidebarLeft - 50, pixel.y]);
+  }
+  return lngLat;
+}
+
+map.on('mousemove', 'centre-line-layer', (e) => {
+  const coordinates = adjustPopupPosition(e.lngLat);
+  const { EMB_Name } = e.features[0].properties;
+  popup
+    .setLngLat(coordinates)
+    .setHTML(`<div class="popup-centre"><div><span class="popup-icon">🏞</span><strong>EMB Name:</strong> ${EMB_Name}</div></div>`)
+    .addTo(map);
+});
+map.on('mouseleave', 'centre-line-layer', () => popup.remove());
+
+map.on('mousemove', 'cross-section-layer', (e) => {
+  const coordinates = adjustPopupPosition(e.lngLat);
+  const { Chainage } = e.features[0].properties;
+  popup
+    .setLngLat(coordinates)
+    .setHTML(`<div class="popup-cross"><div><span class="popup-icon">📍</span><strong>Chainage:</strong> ${Chainage}</div></div>`)
+    .addTo(map);
+});
+map.on('mouseleave', 'cross-section-layer', () => popup.remove());
