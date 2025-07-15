@@ -14,6 +14,22 @@ const popup = new mapboxgl.Popup({
   closeOnClick: false
 });
 
+// Utility to adjust popup to avoid overlapping sidebar
+function adjustPopupPosition(lngLat) {
+  const sidebarWidth = container.classList.contains('collapsed') ? 0 : 320;
+  const mapCanvas = map.getCanvas();
+  const mapRect = mapCanvas.getBoundingClientRect();
+
+  const sidebarLeft = mapRect.right - sidebarWidth;
+  const pixel = map.project(lngLat);
+
+  // If popup would be under the sidebar, offset it to the left
+  if (pixel.x > sidebarLeft - 50) {
+    return map.unproject([sidebarLeft - 50, pixel.y]);
+  }
+  return lngLat;
+}
+
 map.on('style.load', () => {
   map.setFog({
     color: 'white',
@@ -76,12 +92,14 @@ map.on('style.load', () => {
 
       // === Hover popup for Centre Line ===
       map.on('mousemove', 'centre-line-layer', (e) => {
-        const coordinates = e.lngLat;
+        const coordinates = adjustPopupPosition(e.lngLat);
         const { EMB_Name } = geojson.features[0].properties;
 
         popup
           .setLngLat(coordinates)
-          .setHTML(`<strong>EMB Name:</strong> ${EMB_Name}`)
+          .setHTML(`<div class="popup-centre">
+      <div><span class="popup-icon">🏞</span><strong>EMB Name:</strong> ${EMB_Name}</div>
+    </div>`)
           .addTo(map);
       });
 
@@ -150,12 +168,14 @@ map.on('style.load', () => {
 
       // === Hover popup for Cross Section ===
       map.on('mousemove', 'cross-section-layer', (e) => {
-        const coordinates = e.lngLat;
+        const coordinates = adjustPopupPosition(e.lngLat);
         const { Chainage } = e.features[0].properties;
 
         popup
           .setLngLat(coordinates)
-          .setHTML(`<strong>Chainage:</strong> ${Chainage}`)
+          .setHTML(`<div class="popup-cross">
+      <div><span class="popup-icon">📍</span><strong>Chainage:</strong> ${Chainage}</div>
+    </div>`)
           .addTo(map);
       });
 
