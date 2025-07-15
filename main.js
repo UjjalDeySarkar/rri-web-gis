@@ -36,7 +36,7 @@ map.on('style.load', () => {
   };
 
   // === Cross Section Setup (Initial: Hidden) ===
-  fetch('/data/Cross_Section.geojson')
+  fetch('./data/Cross_Section.geojson')
     .then(res => res.json())
     .then(utmData => {
       const reprojectedFeatures = utmData.features.map(feature => {
@@ -83,7 +83,7 @@ map.on('style.load', () => {
     });
 
   // === Centre Line Animation and Reveal Cross Sections ===
-  fetch('/data/Centre_Line.geojson')
+  fetch('./data/Centre_Line.geojson')
     .then(res => res.json())
     .then(utmData => {
       const reprojectedFeatures = utmData.features.map(feature => {
