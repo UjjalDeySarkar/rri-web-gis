@@ -1,0 +1,12 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Open Web GIS in Browser",
+            "type": "shell",
+            "command": "xdg-open index.html",
+            "group": "build",
+            "problemMatcher": []
+        }
+    ]
+}
