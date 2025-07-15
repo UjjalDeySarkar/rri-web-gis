@@ -8,6 +8,12 @@ const map = new mapboxgl.Map({
   zoom: 1
 });
 
+// Create a shared popup
+const popup = new mapboxgl.Popup({
+  closeButton: false,
+  closeOnClick: false
+});
+
 map.on('style.load', () => {
   map.setFog({
     color: 'white',
@@ -68,6 +74,21 @@ map.on('style.load', () => {
         paint: { 'line-color': '#FF5733', 'line-width': 8 }
       });
 
+      // === Hover popup for Centre Line ===
+      map.on('mousemove', 'centre-line-layer', (e) => {
+        const coordinates = e.lngLat;
+        const { EMB_Name } = geojson.features[0].properties;
+
+        popup
+          .setLngLat(coordinates)
+          .setHTML(`<strong>EMB Name:</strong> ${EMB_Name}`)
+          .addTo(map);
+      });
+
+      map.on('mouseleave', 'centre-line-layer', () => {
+        popup.remove();
+      });
+
       let index = 0;
       const interval = setInterval(() => {
         if (index >= allCoords.length) {
@@ -125,6 +146,21 @@ map.on('style.load', () => {
           'line-width': 4,
           'line-dasharray': [2, 1]
         }
+      });
+
+      // === Hover popup for Cross Section ===
+      map.on('mousemove', 'cross-section-layer', (e) => {
+        const coordinates = e.lngLat;
+        const { Chainage } = e.features[0].properties;
+
+        popup
+          .setLngLat(coordinates)
+          .setHTML(`<strong>Chainage:</strong> ${Chainage}`)
+          .addTo(map);
+      });
+
+      map.on('mouseleave', 'cross-section-layer', () => {
+        popup.remove();
       });
 
       map.on('click', 'cross-section-layer', (e) => {
