@@ -1,6 +1,5 @@
 mapboxgl.accessToken = 'pk.eyJ1IjoiYm9zaXJhIiwiYSI6ImNtY3V3Y3JjZTA0Yncyd3B4cXR4YWEwamwifQ.yWciEYaITqTBPhlgAeE9Bg';
 
-
 const map = new mapboxgl.Map({
   container: 'map',
   style: 'mapbox://styles/mapbox/satellite-streets-v12',
@@ -10,7 +9,6 @@ const map = new mapboxgl.Map({
 });
 
 map.on('style.load', () => {
-  // Globe atmosphere
   map.setFog({
     color: 'white',
     'high-color': '#add8e6',
@@ -27,76 +25,49 @@ map.on('style.load', () => {
   });
   map.setTerrain({ source: 'mapbox-dem', exaggeration: 1.5 });
 
-  // Fetch and reproject Centre Line
+  const fromProj = 'EPSG:32645';
+  const toProj = 'EPSG:4326';
+  proj4.defs(fromProj, '+proj=utm +zone=45 +datum=WGS84 +units=m +no_defs');
+
+  // === Centre Line ===
   fetch('/data/Centre_Line.geojson')
     .then(res => res.json())
     .then(utmData => {
-      const fromProj = 'EPSG:32645';
-      const toProj = 'EPSG:4326';
-
-      proj4.defs(fromProj, '+proj=utm +zone=45 +datum=WGS84 +units=m +no_defs');
-
       const reprojectedFeatures = utmData.features.map(feature => {
         const newCoords = feature.geometry.coordinates.map(line =>
           line.map(([x, y]) => proj4(fromProj, toProj, [x, y]))
         );
         return {
           ...feature,
-          geometry: {
-            ...feature.geometry,
-            coordinates: newCoords
-          }
+          geometry: { ...feature.geometry, coordinates: newCoords }
         };
       });
 
-      const geojson = {
-        ...utmData,
-        crs: undefined,
-        features: reprojectedFeatures
-      };
-
+      const geojson = { ...utmData, crs: undefined, features: reprojectedFeatures };
       const allCoords = geojson.features.flatMap(f => f.geometry.coordinates.flat());
 
-      // Fit to bounds first
       const lons = allCoords.map(c => c[0]);
       const lats = allCoords.map(c => c[1]);
       const bounds = [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
-      map.fitBounds(bounds, {
-        padding: 100,
-        duration: 6000,
-        pitch: 45,
-        bearing: -20
-      });
+      map.fitBounds(bounds, { padding: 100, duration: 6000, pitch: 45, bearing: -20 });
 
-      // Prepare animation-ready line source
       const animatedLine = {
         type: 'FeatureCollection',
         features: [{
           type: 'Feature',
-          geometry: {
-            type: 'LineString',
-            coordinates: []
-          },
+          geometry: { type: 'LineString', coordinates: [] },
           properties: {}
         }]
       };
 
-      map.addSource('centre-line', {
-        type: 'geojson',
-        data: animatedLine
-      });
-
+      map.addSource('centre-line', { type: 'geojson', data: animatedLine });
       map.addLayer({
         id: 'centre-line-layer',
         type: 'line',
         source: 'centre-line',
-        paint: {
-          'line-color': '#FF5733',
-          'line-width': 4
-        }
+        paint: { 'line-color': '#FF5733', 'line-width': 8 }
       });
 
-      // Animate line drawing
       let index = 0;
       const interval = setInterval(() => {
         if (index >= allCoords.length) {
@@ -106,9 +77,8 @@ map.on('style.load', () => {
         animatedLine.features[0].geometry.coordinates.push(allCoords[index]);
         map.getSource('centre-line').setData(animatedLine);
         index++;
-      }, 30); // adjust speed here (ms per point)
+      }, 30);
 
-      // Add popup after line is complete
       map.on('click', 'centre-line-layer', (e) => {
         const props = geojson.features[0].properties;
         const infoHtml = `
@@ -122,20 +92,54 @@ map.on('style.load', () => {
             <tr><th>Structures</th><td>${props.Structures || 'N/A'}</td></tr>
           </table>
         `;
-
         document.getElementById('feature-data').innerHTML = infoHtml;
       });
 
-      map.on('mouseenter', 'centre-line-layer', () => {
-        map.getCanvas().style.cursor = 'pointer';
+      map.on('mouseenter', 'centre-line-layer', () => map.getCanvas().style.cursor = 'pointer');
+      map.on('mouseleave', 'centre-line-layer', () => map.getCanvas().style.cursor = '');
+    });
+
+  // === Cross Section ===
+  fetch('/data/Cross_Section.geojson')
+    .then(res => res.json())
+    .then(utmData => {
+      const reprojectedFeatures = utmData.features.map(feature => {
+        const newCoords = feature.geometry.coordinates.map(line =>
+          line.map(([x, y]) => proj4(fromProj, toProj, [x, y]))
+        );
+        return {
+          ...feature,
+          geometry: { ...feature.geometry, coordinates: newCoords }
+        };
       });
 
-      map.on('mouseleave', 'centre-line-layer', () => {
-        map.getCanvas().style.cursor = '';
+      const geojson = { ...utmData, crs: undefined, features: reprojectedFeatures };
+      map.addSource('cross-section', { type: 'geojson', data: geojson });
+
+      map.addLayer({
+        id: 'cross-section-layer',
+        type: 'line',
+        source: 'cross-section',
+        paint: {
+          'line-color': '#0074D9',
+          'line-width': 4,
+          'line-dasharray': [2, 1]
+        }
       });
-    })
-    .catch(err => {
-      console.error('Error loading or rendering Centre_Line.geojson:', err);
+
+      map.on('click', 'cross-section-layer', (e) => {
+        const props = e.features[0].properties;
+        const infoHtml = `
+          <table class="table table-sm table-striped table-bordered">
+            <tr><th>Chainage</th><td>${props.Chainage}</td></tr>
+            <tr><th>Survey Date</th><td>${props.Survey_Dt}</td></tr>
+          </table>
+        `;
+        document.getElementById('feature-data').innerHTML = infoHtml;
+      });
+
+      map.on('mouseenter', 'cross-section-layer', () => map.getCanvas().style.cursor = 'pointer');
+      map.on('mouseleave', 'cross-section-layer', () => map.getCanvas().style.cursor = '');
     });
 });
 
@@ -145,9 +149,5 @@ const container = document.getElementById('container');
 toggleBtn.addEventListener('click', () => {
   container.classList.toggle('collapsed');
   toggleBtn.textContent = container.classList.contains('collapsed') ? '⇦' : '⇨';
-
-  // Resize map after transition completes
-  setTimeout(() => {
-    map.resize();
-  }, 310); // match CSS transition duration
+  setTimeout(() => map.resize(), 310);
 });
