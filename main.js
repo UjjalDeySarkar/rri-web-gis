@@ -109,7 +109,7 @@ map.on('style.load', () => {
         features: [{
           type: 'Feature',
           geometry: { type: 'LineString', coordinates: [] },
-          properties: {}
+          properties: geojson.features[0].properties
         }]
       };
 
