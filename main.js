@@ -97,7 +97,7 @@ map.on('style.load', () => {
       });
 
       const geojson = { ...utmData, crs: undefined, features: reprojectedFeatures };
-      const allCoords = geojson.features.flatMap(f => f.geometry.coordinates.flat());
+      const allCoords = geojson.features.flatMap(f => f.geometry.coordinates.flat()).reverse(); 
 
       const lons = allCoords.map(c => c[0]);
       const lats = allCoords.map(c => c[1]);
