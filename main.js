@@ -105,7 +105,7 @@ map.on('style.load', () => {
 
       // Hold for 2 seconds before starting animation and fitBounds
       setTimeout(() => {
-        map.fitBounds(bounds, { padding: 100, duration: 6000, pitch: 45, bearing: -20 });
+        map.fitBounds(bounds, { padding: 100, duration: 15000, pitch: 45, bearing: -20 }); // 15s duration
 
         const animatedLine = {
           type: 'FeatureCollection',
@@ -158,7 +158,7 @@ map.on('style.load', () => {
           });
 
           index++;
-        }, 30);
+        }, 30); // was 60, now 90ms per step for even smoother, slower animation
 
         // Click on Centre Line
         map.on('click', 'centre-line-layer', (e) => {
