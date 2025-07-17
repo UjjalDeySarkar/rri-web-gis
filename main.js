@@ -102,82 +102,84 @@ map.on('style.load', () => {
       const lons = allCoords.map(c => c[0]);
       const lats = allCoords.map(c => c[1]);
       const bounds = [[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]];
-      map.fitBounds(bounds, { padding: 100, duration: 6000, pitch: 45, bearing: -20 });
 
-      const animatedLine = {
-        type: 'FeatureCollection',
-        features: [{
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: [] },
-          properties: geojson.features[0].properties
-        }]
-      };
+      // Hold for 2 seconds before starting animation and fitBounds
+      setTimeout(() => {
+        map.fitBounds(bounds, { padding: 100, duration: 6000, pitch: 45, bearing: -20 });
 
-      map.addSource('centre-line', { type: 'geojson', data: animatedLine });
+        const animatedLine = {
+          type: 'FeatureCollection',
+          features: [{
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: [] },
+            properties: geojson.features[0].properties
+          }]
+        };
 
-      map.addLayer({
-        id: 'centre-line-layer',
-        type: 'line',
-        source: 'centre-line',
-        paint: { 'line-color': '#FF5733', 'line-width': 4 }
-      });
+        map.addSource('centre-line', { type: 'geojson', data: animatedLine });
 
-      let index = 0;
-      const bufferDistance = 0.001;
-
-      const interval = setInterval(() => {
-        if (index >= allCoords.length) {
-          clearInterval(interval);
-          return;
-        }
-
-        const currentCoord = allCoords[index];
-        // console.log("Current Centre Coord:", currentCoord);
-        animatedLine.features[0].geometry.coordinates.push(currentCoord);
-        map.getSource('centre-line').setData(animatedLine);
-
-        // Reveal Cross Sections dynamically
-        originalCrossSectionFeatures.forEach((feature) => {
-          const alreadyVisible = visibleCrossSection.features.some(
-            f => f.properties.Chainage === feature.properties.Chainage
-          );
-          if (alreadyVisible) return;
-
-          const lineCoords = feature.geometry.coordinates[0];
-          for (const [x, y] of lineCoords) {
-            const dx = x - currentCoord[0];
-            const dy = y - currentCoord[1];
-            if (Math.sqrt(dx * dx + dy * dy) < bufferDistance) {
-              visibleCrossSection.features.push(feature);
-              // console.log(`Revealing Chainage ${feature.properties.Chainage}`);
-              map.getSource('cross-section').setData(visibleCrossSection);
-              break;
-            }
-          }
+        map.addLayer({
+          id: 'centre-line-layer',
+          type: 'line',
+          source: 'centre-line',
+          paint: { 'line-color': '#FF5733', 'line-width': 4 }
         });
 
-        index++;
-      }, 30);
+        let index = 0;
+        const bufferDistance = 0.001;
 
-      // Click on Centre Line
-      map.on('click', 'centre-line-layer', (e) => {
-        const props = geojson.features[0].properties;
-        const infoHtml = `
-          <table class="table table-sm table-striped table-bordered">
-            <tr><th>Name</th><td>${props.EMB_Name}</td></tr>
-            <tr><th>Ownership</th><td>${props.Ownership}</td></tr>
-            <tr><th>District</th><td>${props.District}</td></tr>
-            <tr><th>Block</th><td>${props.Block}</td></tr>
-            <tr><th>River</th><td>${props.River_Adj}</td></tr>
-            <tr><th>Side of River</th><td>${props.Side_River}</td></tr>
-            <tr><th>Structures</th><td>${props.Structures || 'N/A'}</td></tr>
-          </table>
-        `;
-        document.getElementById('feature-data').innerHTML = infoHtml;
-      });
+        const interval = setInterval(() => {
+          if (index >= allCoords.length) {
+            clearInterval(interval);
+            return;
+          }
 
-      map.on('mouseenter', 'centre-line-layer', () => map.getCanvas().style.cursor = 'pointer');
-      map.on('mouseleave', 'centre-line-layer', () => map.getCanvas().style.cursor = '');
+          const currentCoord = allCoords[index];
+          animatedLine.features[0].geometry.coordinates.push(currentCoord);
+          map.getSource('centre-line').setData(animatedLine);
+
+          // Reveal Cross Sections dynamically
+          originalCrossSectionFeatures.forEach((feature) => {
+            const alreadyVisible = visibleCrossSection.features.some(
+              f => f.properties.Chainage === feature.properties.Chainage
+            );
+            if (alreadyVisible) return;
+
+            const lineCoords = feature.geometry.coordinates[0];
+            for (const [x, y] of lineCoords) {
+              const dx = x - currentCoord[0];
+              const dy = y - currentCoord[1];
+              if (Math.sqrt(dx * dx + dy * dy) < bufferDistance) {
+                visibleCrossSection.features.push(feature);
+                map.getSource('cross-section').setData(visibleCrossSection);
+                break;
+              }
+            }
+          });
+
+          index++;
+        }, 30);
+
+        // Click on Centre Line
+        map.on('click', 'centre-line-layer', (e) => {
+          const props = geojson.features[0].properties;
+          const infoHtml = `
+            <table class="table table-sm table-striped table-bordered">
+              <tr><th>Name</th><td>${props.EMB_Name}</td></tr>
+              <tr><th>Ownership</th><td>${props.Ownership}</td></tr>
+              <tr><th>District</th><td>${props.District}</td></tr>
+              <tr><th>Block</th><td>${props.Block}</td></tr>
+              <tr><th>River</th><td>${props.River_Adj}</td></tr>
+              <tr><th>Side of River</th><td>${props.Side_River}</td></tr>
+              <tr><th>Structures</th><td>${props.Structures || 'N/A'}</td></tr>
+            </table>
+          `;
+          document.getElementById('feature-data').innerHTML = infoHtml;
+        });
+
+        map.on('mouseenter', 'centre-line-layer', () => map.getCanvas().style.cursor = 'pointer');
+        map.on('mouseleave', 'centre-line-layer', () => map.getCanvas().style.cursor = '');
+      }, 2000); // 2 second hold
     });
 });
 
